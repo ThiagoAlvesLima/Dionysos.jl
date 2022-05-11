@@ -47,6 +47,10 @@ joint2_to_body1 = Transform3D(
 attach!(double_pendulum, body1, body2, joint2,
     joint_pose = joint2_to_body1)
 
+## Export URDF
+# write_urdf("test.urdf", double_pendulum; robot_name="double_pendulum", include_root=true)
+
+
 # ## Create `MechanismState` associated with the double pendulum `Mechanism`
 # A `MechanismState` stores all state-dependent information associated with a `Mechanism`.
 
