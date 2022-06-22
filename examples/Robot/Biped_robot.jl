@@ -1,5 +1,5 @@
 # Here we hope to chieve simulation of our biped robot. Options with and without control added.
-
+using Revise
 using RigidBodyDynamics
 using MeshCatMechanisms
 using RigidBodyDynamics.Contact
@@ -34,49 +34,114 @@ world = root_body(robot) # the fixed 'world' rigid body
 
 ## modify the mechanism
 
+# create a symbolic symmetric inertia matrix
+function get_symb_Inertia_matrix(H)
+    I_m = Symbolics.variables(H,1:3,1:3); 
+    for i = 1:3
+        for j = 1:3
+            if i > j
+                I_m[i,j] = I_m[j,i]
+            end
+        end
+    end
+    I_m
+end
+
+    """
+
+    Construct a `SpatialInertia` by specifying:
+    
+    * `frame`: the frame in which the spatial inertia is expressed.
+    * one of:
+      * `moment`: the moment of inertia expressed in `frame` (i.e., about the origin of `frame` and in `frame`'s axes).
+      * `moment_about_com`: the moment of inertia about the center of mass, in `frame`'s axes.
+    * `com`: the center of mass expressed in `frame`.
+    * `mass`: the total mass.
+    
+    The `com` and `mass` keyword arguments are required, as well as exactly one of `moment` and `moment_about_com`
+    """
+
+
+## Attach hips
+
+inertia1 = SpatialInertia(CartesianFrame3D("hips_link"),
+    moment=Symbolics.variables(:I_h,1:3,1:3),
+    com=SVector(l_h_x,l_h_y,l_h_z),
+    mass=m_h)
+
+body1 = RigidBody(inertia1)
+
 # Attach the hip link to the world via a floating joint named 'world_to_hips'
-## unfortunately we cannot define floating joint through RigidBodyDynamics because the method was not create in RigidBodyDynamics but through URDF yes. Lets try to create the boom mechanism 
 
-## creates a base_link
-# axis_fix = SVector( zero(T), zero(T),  zero(T)) ## special axis to make revolute joint become fixed joint
-# inertia1 = SpatialInertia(CartesianFrame3D("base_link"),
-#     moment=I_h * axis * transpose(axis),
-#     com=SVector(l_h_x,l_h_y,l_h_z),
-#     mass=m_h)
-# body1 = RigidBody(inertia1)
-# joint1 = Joint("world_to_base_link", Revolute(axis_fix))
+joint1 = Joint("world_to_hips", QuaternionFloating{Num}())
+
 # joint1_to_world = one(Transform3D{T}, frame_before(joint1), default_frame(world));
-# attach!(robot, world, body1, joint1,
-#     joint_pose = joint1_to_world);
+joint1_to_world = Transform3D(frame_before(joint1), default_frame(world), SVector(zero(T), one(T), one(T)));
 
-# ##
-# axis_hips = SVector( one(T), one(T),  one(T)) ## special axis since the hips can rotate in the 3 axis
-# inertia1 = SpatialInertia(CartesianFrame3D("hips_link"),
-#     moment=I_h * axis * transpose(axis),
-#     com=SVector(l_h_x,l_h_y,l_h_z),
-#     mass=m_h)
-# body1 = RigidBody(inertia1)
-# joint1 = Joint("world_to_hips", Prismatic(axis_hips))
-# joint1_to_world = one(Transform3D{T}, frame_before(joint1), default_frame(world));
-# attach!(robot, world, body1, joint1,
-#     joint_pose = joint1_to_world);
+attach!(robot, world, body1, joint1,joint_pose = joint1_to_world); # attach the link to the mechanism tree
 
-# # Attach the right thigh link to the hips link via a revolute joint named 'r_hips_joint'
-# inertia2 = SpatialInertia(CartesianFrame3D("r_thigh_link"),
-#     moment=I_r_t * axis * transpose(axis),
-#     com=SVector(zero(T), zero(T), c_r_t),
-#     mass=m_r_t)
-# body2 = RigidBody(inertia2)
-# joint2 = Joint("r_hips_joint", Revolute(axis))
-# joint2_to_body1 = Transform3D(
-#     frame_before(joint2), default_frame(body1), SVector(zero(T), zero(T), l_r_t))
-# attach!(robot, body1, body2, joint2,
-#     joint_pose = joint2_to_body1)
+# We now repeat the process to the other parts of the robot.
+
+## Attach the right thigh link to the hips link via a revolute joint named 'r_hips_joint'
+inertia2 = SpatialInertia(CartesianFrame3D("r_thigh_link"),
+    moment=I_r_t * axis * transpose(axis),
+    com=SVector(zero(T), zero(T), c_r_t),
+    mass=m_r_t)
+
+body2 = RigidBody(inertia2)
+
+joint2 = Joint("r_hips_joint", Revolute(axis))
+
+joint2_to_body1 = Transform3D(frame_before(joint2), default_frame(body1), SVector(zero(T), zero(T), -l_r_t))
+
+attach!(robot, body1, body2, joint2, joint_pose = joint2_to_body1)
+
+## Attach the left thigh link to the hips link via a revolute joint named 'l_hips_joint'
+inertia4 = SpatialInertia(CartesianFrame3D("l_thigh_link"),
+    moment=I_l_t * axis * transpose(axis),
+    com=SVector(zero(T), zero(T), c_l_t),
+    mass=m_l_t)
+
+body4 = RigidBody(inertia4)
+
+joint4 = Joint("l_hips_joint", Revolute(axis))
+
+joint4_to_body1 = Transform3D(frame_before(joint4), default_frame(body1), SVector(zero(T), zero(T), -l_l_t))
+
+attach!(robot, body1, body4, joint4, joint_pose = joint4_to_body1)
+
+## Attach the right leg link to the right thigh link via a revolute joint named 'r_knee_joint'
+inertia3 = SpatialInertia(CartesianFrame3D("r_leg_link"),
+    moment=I_r_l * axis * transpose(axis),
+    com=SVector(zero(T), zero(T), c_r_l),
+    mass=m_r_l)
+
+body3 = RigidBody(inertia3)
+
+joint3 = Joint("r_knee_joint", Revolute(axis))
+
+joint3_to_body2 = Transform3D(frame_before(joint3), default_frame(body2), SVector(zero(T), zero(T), -l_r_l))
+
+attach!(robot, body2, body3, joint3, joint_pose = joint3_to_body2)
+
+## Attach the left leg link to the left thigh link via a revolute joint named 'l_knee_joint'
+inertia5 = SpatialInertia(CartesianFrame3D("l_leg_link"),
+    moment=I_l_l * axis * transpose(axis),
+    com=SVector(zero(T), zero(T), c_l_l),
+    mass=m_l_l)
+
+body5 = RigidBody(inertia5)
+
+joint5 = Joint("l_knee_joint", Revolute(axis))
+
+joint5_to_body4 = Transform3D(frame_before(joint5), default_frame(body4), SVector(zero(T), zero(T), -l_r_l))
+
+attach!(robot, body4, body5, joint5, joint_pose = joint5_to_body4)
 
 # ## to be continued...
 
 ## Export URDF
-# write_urdf("test.urdf", double_pendulum; robot_name="double_pendulum", include_root=true)
+#write_urdf("biped_robot_exported.urdf", robot; robot_name="biped_robot_exported", include_root=true)
 ## the problem with the write_urdf function is that is does not include some tags as the visual one
 
 # # ## Create `MechanismState` associated with the double pendulum `Mechanism`
@@ -84,16 +149,55 @@ world = root_body(robot) # the fixed 'world' rigid body
 
 # x = MechanismState(robot);
 
-# # Joints vector
+# # Set the joint configuration vector of the MechanismState to a new vector of symbolic variables
+
 # q = configuration(x)
 
+# q_s = Symbolics.variables(:q, 1:length(configuration(x)))
+# set_configuration!(x, q_s) # starting a pass initial configuration for i in eachindex(q)
+# q = configuration(x)
+
+
 # # Velocities vector
+# v = velocity(x)
+
+# v_s = Symbolics.variables(:v, 1:length(velocity(x)))
+# set_velocity!(x, v_s) # Set the joint velocity vector of the MechanismState to a new vector of symbolic variables
 # v = velocity(x)
 
 # # ## Compute dynamical quantities in symbolic form
 
 # # Mass matrix
-# simplify.(mass_matrix(x)) # This gives you the general inertia matrix M(x) of the robot
+# MM = simplify.(mass_matrix(x)) # This gives you the general inertia matrix M(x) of the mechanism
+# # latexify(MM) #if we want it for latex
+
+# # Kinetic energy
+
+# simplify.(kinetic_energy(x))
+
+# # Potential energy
+
+# # this works in my dev version of RigidBodyDynamics because I eliminated the line with the boolean test in the function
+# simplify.(gravitational_potential_energy(x))
+
+# # Compute dynamics_bias c(q,v,w_ext)
+
+# simplify.(dynamics_bias(x))
+
+# # We can also do inverse dynamics...
+
+# v̇ = similar(v) # the joint acceleration vector, i.e., the time derivative of the joint velocity vector v
+# a_s = Symbolics.variables(:v̇, 1:length(velocity(x)))
+
+# for l = 1:length(v̇)
+#     v̇[l] = a_s[l]
+# end
+
+# simplify.(inverse_dynamics(x, v̇)) # this gives you τ
+
+# ## M(q)v̇ +c(q,v,w) = τ, where q is the joint configuration vector (angles), v is the joint velocity vector, and v̇ is the joint. Furthermore, c(q,v,w) 
+# ## is the Coriolis tensor, which embeds viscous friction torques and possible external signals (disturbances) w and effects of gravity. 
+# simplify.(inverse_dynamics(x, v̇))+simplify.(dynamics_bias(x))
 
 # #### If we want to load the URDF instead of creating the robot with RigidBodyDynamics
 ## describe path to urdf file
@@ -135,14 +239,14 @@ end
 contactmodel = default_contact_model()
 
 # # create contact point in right leg_link
-right_leg_link = findbody(robot,"r_leg_link")
-frame_lower_link = default_frame(right_leg_link)
-add_contact_point!(right_leg_link, ContactPoint(Point3D(frame_lower_link, 0.0, 0.0, -1.05), contactmodel))
+right_foot_link = findbody(robot,"r_foot_link")
+frame_lower_link = default_frame(right_foot_link)
+add_contact_point!(right_foot_link, ContactPoint(Point3D(frame_lower_link, 0.0, 0.0, -0.03), contactmodel))
 
 # # create contact point in left leg_link
-left_leg_link = findbody(robot,"l_leg_link")
-frame_lower_link = default_frame(left_leg_link)
-add_contact_point!(left_leg_link, ContactPoint(Point3D(frame_lower_link, 0.0, 0.0, -1.05), contactmodel))
+left_foot_link = findbody(robot,"l_foot_link")
+frame_lower_link = default_frame(left_foot_link)
+add_contact_point!(left_foot_link, ContactPoint(Point3D(frame_lower_link, 0.0, 0.0, -0.03), contactmodel))
 
 
 ## the state of the mechanism is a type that contains many information about the mechanism. most importantly, the angles, velocities, etc of the joints
@@ -154,7 +258,9 @@ vis = MechanismVisualizer(robot, URDFVisuals(urdfpath()));
 open(vis)
 
 ## set the configurations and velocities of the joints (i.e., initial angles (called configuration in julia robotics) and initial velocities):
-set_configuration!(state, [1,0,0,0,0,0,0,0,0,0,-pi/4]) # starting a pass initial configuration
+# set_configuration!(state, [1,0,0,0,0,0,1,0,0,0,0]) # starting a pass initial configuration
+set_configuration!(state, [1,0,0,0,0,0,0,0,0,0,pi/4]) # starting a pass initial configuration
+
 set_configuration!(vis, configuration(state)) ## update the configuration also in the visualiser
 
 # ## Basic simulation is easy (but see RigidBodySim.jl for a more featureful simulator). 
@@ -178,7 +284,7 @@ function control!(torques::AbstractVector, t, state::MechanismState)
     end
 end
 
-ts, qs, vs = simulate(state, 1, control!; Δt = 1e-3);
+ts, qs, vs = simulate(state, 1, control!; Δt = 1e-3); 
 
 ## After which we can animate the results:
 MeshCatMechanisms.animate(vis, ts, qs; realtimerate = 0.2)
